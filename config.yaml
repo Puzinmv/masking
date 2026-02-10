@@ -1,0 +1,25 @@
+language: ru
+
+# Типы сущностей, которые нужно маскировать.
+# Ключи должны соответствовать типам сущностей Presidio (стандартным или кастомным).
+entity_types:
+  - PERSON
+  - PHONE_NUMBER
+  - EMAIL_ADDRESS
+  - ORGANIZATION
+  - LOCATION
+  - INN
+  - SNILS
+  - OGRN
+  - BANK_ACCOUNT
+  - ORG_INN
+  - ORG_KPP
+  - ORG_OGRN
+
+# Минимальная вероятность для учёта сущности.
+score_threshold: 0.35
+
+# Конфигурация логирования по умолчанию (может быть перекрыта --log-level).
+logging:
+  level: INFO
+
