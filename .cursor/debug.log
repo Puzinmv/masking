@@ -87,3 +87,9 @@
 {"message": "docx process after", "data": {"file_name": "1.Сведения о результатах присвоения объекту КИИ категории значимости - ОИК Диспетчер ЗЭС.docx", "paragraphs_text_len_after": 1418, "tables_text_len_after": 45867, "entities_found": 81, "hypothesisId": "H4"}, "timestamp": 1770733815606, "runId": "post-fix"}
 {"message": "docx process before", "data": {"file_name": "input_texts.docx", "paragraphs": 33, "table_paragraphs": 154, "paragraphs_text_len": 359, "tables_text_len": 10171, "hypothesisId": "H3"}, "timestamp": 1770733815624, "runId": "post-fix"}
 {"message": "docx process after", "data": {"file_name": "input_texts.docx", "paragraphs_text_len_after": 370, "tables_text_len_after": 10213, "entities_found": 18, "hypothesisId": "H4"}, "timestamp": 1770733816166, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1770808810007, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1770808993654, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1770808993726, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1770808993950, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 17575, "tables_text_len_after": 796, "entities_found": 87, "hypothesisId": "H4"}, "timestamp": 1770809002265, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1770815623599, "runId": "post-fix"}

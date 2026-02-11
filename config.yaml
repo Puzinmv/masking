@@ -19,6 +19,13 @@ entity_types:
 # Минимальная вероятность для учёта сущности.
 score_threshold: 0.35
 
+# Optional allow-list of exact phrases to mask.
+# Example:
+# custom_dictionary:
+#   ORGANIZATION:
+#     - 'ФГБОУ ВО "Новосибирский Государственный Университет Экономики И Управления" "НИНХ"'
+custom_dictionary: {}
+
 # Конфигурация логирования по умолчанию (может быть перекрыта --log-level).
 logging:
   level: INFO

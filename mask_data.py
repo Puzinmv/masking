@@ -30,12 +30,18 @@ STOPWORD_LEMMA_CACHE: Dict[str, set[str]] = {}
 STOPWORDS_NLP_ENGINE: Optional[NlpEngine] = None
 STOPWORDS_LANGUAGE: str = "ru"
 
+# Heuristics for expanding organization abbreviations like "ФГБОУ".
+ORG_ABBR_RE = re.compile(r"^[A-ZА-ЯЁ]{2,10}(?:\s+[A-ZА-ЯЁ]{2,10}){0,3}$")
+ORG_UPPER_WORD_RE = re.compile(r"^[A-ZА-ЯЁ]{2,10}$")
+ORG_TITLE_WORD_RE = re.compile(r"^[A-ZА-ЯЁ][a-zа-яё]+(?:-[A-ZА-ЯЁ][a-zа-яё]+)*$")
+
 
 @dataclass
 class MaskingConfig:
     language: str
     entity_types: List[str]
     score_threshold: float
+    custom_dictionary: Dict[str, List[str]]
 
 
 def load_config(path: Optional[Path]) -> MaskingConfig:
@@ -59,6 +65,7 @@ def load_config(path: Optional[Path]) -> MaskingConfig:
             "ORG_OGRN",
         ],
         "score_threshold": 0.35,
+        "custom_dictionary": {},
     }
 
     if path is None or not path.is_file():
@@ -68,10 +75,22 @@ def load_config(path: Optional[Path]) -> MaskingConfig:
             file_cfg = yaml.safe_load(f) or {}
         cfg = {**default, **file_cfg}
 
+    raw_custom_dict = cfg.get("custom_dictionary") or {}
+    custom_dictionary: Dict[str, List[str]] = {}
+    if isinstance(raw_custom_dict, dict):
+        for ent_type, values in raw_custom_dict.items():
+            if not isinstance(values, list):
+                continue
+            ent_type_u = str(ent_type).upper()
+            normalized = [str(v).strip() for v in values if str(v).strip()]
+            if normalized:
+                custom_dictionary[ent_type_u] = normalized
+
     return MaskingConfig(
         language=cfg["language"],
         entity_types=list(cfg["entity_types"]),
         score_threshold=float(cfg["score_threshold"]),
+        custom_dictionary=custom_dictionary,
     )
 
 
@@ -210,7 +229,7 @@ def build_nlp_engine(language: str) -> NlpEngine:
     nlp_configuration = {
         "nlp_engine_name": "spacy",
         "models": [
-            {"lang_code": language, "model_name": f"{language}_core_news_md"},
+            {"lang_code": language, "model_name": f"{language}_core_news_lg"},
         ],
     }
     provider = NlpEngineProvider(nlp_configuration=nlp_configuration)
@@ -563,6 +582,170 @@ class TokenGenerator:
         return token
 
 
+def _looks_like_org_word(word: str) -> bool:
+    if ORG_UPPER_WORD_RE.match(word):
+        return True
+    if ORG_TITLE_WORD_RE.match(word):
+        return True
+    return False
+
+
+def _expand_organization_span(text: str, start: int, end: int) -> Tuple[int, int]:
+    """
+    Expand short organization abbreviations to the right to capture full names.
+    Example: "ФГБОУ ВО "..." "..."".
+    """
+    original = text[start:end].strip()
+    if not ORG_ABBR_RE.match(original):
+        return start, end
+
+    i = end
+    new_end = end
+
+    while i < len(text):
+        # skip whitespace
+        while i < len(text) and text[i].isspace():
+            i += 1
+        if i >= len(text):
+            break
+
+        ch = text[i]
+        if ch in ("\"", "«"):
+            close = "»" if ch == "«" else "\""
+            j = text.find(close, i + 1)
+            if j == -1:
+                break
+            new_end = j + 1
+            i = j + 1
+            continue
+
+        if ch in "([;:,.])" or ch in "–—-":
+            break
+
+        j = i
+        while j < len(text) and (text[j].isalnum() or text[j] in "-/"):
+            j += 1
+        word = text[i:j]
+        if _looks_like_org_word(word):
+            new_end = j
+            i = j
+            continue
+        break
+
+    return start, new_end
+
+
+def _expand_organization_results(
+    text: str, results: List[RecognizerResult]
+) -> List[RecognizerResult]:
+    expanded: List[RecognizerResult] = []
+    for res in results:
+        if res.entity_type.upper() == "ORGANIZATION":
+            new_start, new_end = _expand_organization_span(text, res.start, res.end)
+            if new_start != res.start or new_end != res.end:
+                res = RecognizerResult(
+                    entity_type=res.entity_type,
+                    start=new_start,
+                    end=new_end,
+                    score=res.score,
+                )
+        expanded.append(res)
+    return expanded
+
+
+def _merge_overlapping_organizations(
+    results: List[RecognizerResult],
+) -> List[RecognizerResult]:
+    orgs = [r for r in results if r.entity_type.upper() == "ORGANIZATION"]
+    if not orgs:
+        return results
+
+    orgs_sorted = sorted(
+        orgs, key=lambda r: (r.start, -(r.end - r.start), -r.score)
+    )
+    merged: List[RecognizerResult] = []
+    for res in orgs_sorted:
+        if not merged:
+            merged.append(res)
+            continue
+        last = merged[-1]
+        if res.start < last.end:
+            len_res = res.end - res.start
+            len_last = last.end - last.start
+            if len_res > len_last or (len_res == len_last and res.score > last.score):
+                merged[-1] = res
+            continue
+        merged.append(res)
+
+    others = [r for r in results if r.entity_type.upper() != "ORGANIZATION"]
+    return merged + others
+
+
+def _remove_results_inside_organizations(
+    results: List[RecognizerResult],
+) -> List[RecognizerResult]:
+    org_spans = [(r.start, r.end) for r in results if r.entity_type.upper() == "ORGANIZATION"]
+    if not org_spans:
+        return results
+
+    filtered: List[RecognizerResult] = []
+    for res in results:
+        if res.entity_type.upper() == "ORGANIZATION":
+            filtered.append(res)
+            continue
+        if any(start <= res.start and res.end <= end for start, end in org_spans):
+            continue
+        filtered.append(res)
+    return filtered
+
+
+def _dedupe_results(results: List[RecognizerResult]) -> List[RecognizerResult]:
+    seen = set()
+    deduped: List[RecognizerResult] = []
+    for res in results:
+        key = (res.entity_type, res.start, res.end)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(res)
+    return deduped
+
+
+def _term_to_regex(term: str) -> str:
+    parts = [re.escape(p) for p in re.split(r"\s+", term.strip()) if p]
+    return r"\s+".join(parts)
+
+
+def _find_dictionary_entities(
+    text: str,
+    custom_dictionary: Dict[str, List[str]],
+    enabled_entity_types: List[str],
+) -> List[RecognizerResult]:
+    if not custom_dictionary:
+        return []
+
+    enabled = {e.upper() for e in enabled_entity_types}
+    results: List[RecognizerResult] = []
+    for ent_type, values in custom_dictionary.items():
+        ent_type_u = ent_type.upper()
+        if ent_type_u not in enabled:
+            continue
+        for term in values:
+            pattern = _term_to_regex(term)
+            if not pattern:
+                continue
+            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                results.append(
+                    RecognizerResult(
+                        entity_type=ent_type_u,
+                        start=match.start(),
+                        end=match.end(),
+                        score=0.9,
+                    )
+                )
+    return results
+
+
 def mask_text(
     text: str,
     analyzer: AnalyzerEngine,
@@ -601,6 +784,21 @@ def mask_text(
             continue
 
         filtered_results.append(res)
+
+    # Add dictionary-based entities (explicit allow-list).
+    filtered_results.extend(
+        _find_dictionary_entities(
+            text=text,
+            custom_dictionary=config.custom_dictionary,
+            enabled_entity_types=config.entity_types,
+        )
+    )
+
+    # Expand organization abbreviations and clean overlaps.
+    filtered_results = _expand_organization_results(text, filtered_results)
+    filtered_results = _merge_overlapping_organizations(filtered_results)
+    filtered_results = _remove_results_inside_organizations(filtered_results)
+    filtered_results = _dedupe_results(filtered_results)
 
     # Сортируем по убыванию start, чтобы не смещать индексы при подстановке.
     results_sorted = sorted(filtered_results, key=lambda r: r.start, reverse=True)
