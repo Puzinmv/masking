@@ -14,26 +14,64 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_analyzer.nlp_engine import NlpEngine
 
 from docx import Document
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import textwrap
+from io import StringIO
 
 
 LOGGER = logging.getLogger("mask_data")
 
 
-SUPPORTED_EXTENSIONS = {".txt", ".docx", ".doc"}
+IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".gif",
+    ".webp",
+    ".heic",
+    ".heif",
+    ".jp2",
+    ".j2k",
+    ".jpx",
+    ".jpf",
+    ".jpm",
+    ".jxr",
+    ".ppm",
+    ".pgm",
+    ".pbm",
+    ".pnm",
+    ".ico",
+}
+SUPPORTED_EXTENSIONS = {".txt", ".docx", ".doc", ".pdf"} | IMAGE_EXTENSIONS
+
+OCR_LANGUAGE = "ru"
+OCR_PDF_ZOOM = 2.0
+OCR_MIN_CONFIDENCE = 0.3
+_OCR_ENGINE = None
+_OCR_DEPS = None
 
 # Глобальный словарь "стоп-слов" по типам сущностей, загружается из YAML.
-# Ключ: тип сущности (PERSON, ORGANIZATION, ...), значение: множество строк (в верхнем регистре).
-ENTITY_STOPWORDS: Dict[str, set[str]] = {}
+# Ключ: тип сущности (PERSON, ORGANIZATION, ...), значение: набор точных строк и regex-паттернов.
+
+
+@dataclass(frozen=True)
+class StopwordSet:
+    exact: set[str]
+    regex: List[re.Pattern]
+
+
+ENTITY_STOPWORDS: Dict[str, StopwordSet] = {}
 
 # Кеш лемм и NLP-движок для морфологической фильтрации стоп-слов.
 STOPWORD_LEMMA_CACHE: Dict[str, set[str]] = {}
 STOPWORDS_NLP_ENGINE: Optional[NlpEngine] = None
 STOPWORDS_LANGUAGE: str = "ru"
-
-# Heuristics for expanding organization abbreviations like "ФГБОУ".
-ORG_ABBR_RE = re.compile(r"^[A-ZА-ЯЁ]{2,10}(?:\s+[A-ZА-ЯЁ]{2,10}){0,3}$")
-ORG_UPPER_WORD_RE = re.compile(r"^[A-ZА-ЯЁ]{2,10}$")
-ORG_TITLE_WORD_RE = re.compile(r"^[A-ZА-ЯЁ][a-zа-яё]+(?:-[A-ZА-ЯЁ][a-zа-яё]+)*$")
 
 
 @dataclass
@@ -41,7 +79,6 @@ class MaskingConfig:
     language: str
     entity_types: List[str]
     score_threshold: float
-    custom_dictionary: Dict[str, List[str]]
 
 
 def load_config(path: Optional[Path]) -> MaskingConfig:
@@ -65,7 +102,6 @@ def load_config(path: Optional[Path]) -> MaskingConfig:
             "ORG_OGRN",
         ],
         "score_threshold": 0.35,
-        "custom_dictionary": {},
     }
 
     if path is None or not path.is_file():
@@ -75,26 +111,14 @@ def load_config(path: Optional[Path]) -> MaskingConfig:
             file_cfg = yaml.safe_load(f) or {}
         cfg = {**default, **file_cfg}
 
-    raw_custom_dict = cfg.get("custom_dictionary") or {}
-    custom_dictionary: Dict[str, List[str]] = {}
-    if isinstance(raw_custom_dict, dict):
-        for ent_type, values in raw_custom_dict.items():
-            if not isinstance(values, list):
-                continue
-            ent_type_u = str(ent_type).upper()
-            normalized = [str(v).strip() for v in values if str(v).strip()]
-            if normalized:
-                custom_dictionary[ent_type_u] = normalized
-
     return MaskingConfig(
         language=cfg["language"],
         entity_types=list(cfg["entity_types"]),
         score_threshold=float(cfg["score_threshold"]),
-        custom_dictionary=custom_dictionary,
     )
 
 
-def load_stopwords(path: Optional[Path]) -> Dict[str, set[str]]:
+def load_stopwords(path: Optional[Path]) -> Dict[str, StopwordSet]:
     """
     Загрузка стоп-слов из YAML-файла.
     Формат:
@@ -125,14 +149,29 @@ def load_stopwords(path: Optional[Path]) -> Dict[str, set[str]]:
         LOGGER.error("Некорректный формат stopwords YAML (ожидается mapping): %s", path)
         return {}
 
-    result: Dict[str, set[str]] = {}
+    result: Dict[str, StopwordSet] = {}
     for ent_type, values in raw.items():
         if not isinstance(values, list):
             continue
         et = str(ent_type).upper()
-        normalized = {str(v).upper() for v in values}
-        if normalized:
-            result[et] = normalized
+        exact: set[str] = set()
+        regex: List[re.Pattern] = []
+        for v in values:
+            s = str(v).strip()
+            if not s:
+                continue
+            if s.lower().startswith("re:"):
+                pattern = s[3:].strip()
+                if not pattern:
+                    continue
+                try:
+                    regex.append(re.compile(pattern, flags=re.IGNORECASE))
+                except re.error as exc:
+                    LOGGER.warning("Некорректный regex в stopwords (%s): %s", et, exc)
+                continue
+            exact.add(s.upper())
+        if exact or regex:
+            result[et] = StopwordSet(exact=exact, regex=regex)
 
     LOGGER.info("Загружено стоп-слов: %d типов из %s", len(result), path)
     return result
@@ -204,15 +243,20 @@ def _is_in_stopwords(ent_type: str, original_value: str) -> bool:
         return False
 
     # Точное совпадение по строке.
-    if value_u in stopwords:
+    if value_u in stopwords.exact:
         return True
+
+    # Совпадение по regex.
+    for rx in stopwords.regex:
+        if rx.search(original_value):
+            return True
 
     # Сравнение по леммам.
     value_lemmas = _get_lemmas_for_text(original_value)
     if not value_lemmas:
         return False
 
-    for sw in stopwords:
+    for sw in stopwords.exact:
         sw_lemmas = _get_lemmas_for_text(sw)
         if value_lemmas & sw_lemmas:
             return True
@@ -229,7 +273,7 @@ def build_nlp_engine(language: str) -> NlpEngine:
     nlp_configuration = {
         "nlp_engine_name": "spacy",
         "models": [
-            {"lang_code": language, "model_name": f"{language}_core_news_lg"},
+            {"lang_code": language, "model_name": f"{language}_core_news_md"},
         ],
     }
     provider = NlpEngineProvider(nlp_configuration=nlp_configuration)
@@ -459,6 +503,187 @@ def get_files(input_dir: Path) -> Iterable[Path]:
                 yield root_path / name
 
 
+def _load_ocr_deps() -> Tuple["Image.Image", "PaddleOCR", "np"]:  # type: ignore[name-defined]
+    global _OCR_DEPS
+    if _OCR_DEPS is not None:
+        return _OCR_DEPS
+
+    # Отключаем проверки источников моделей и OneDNN (частая причина ошибок на CPU).
+    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+    os.environ.setdefault("FLAGS_use_mkldnn", "0")
+    os.environ.setdefault("PADDLE_DISABLE_MKLDNN", "1")
+    os.environ.setdefault("FLAGS_use_onednn", "0")
+    os.environ.setdefault("FLAGS_use_new_executor", "0")
+    os.environ.setdefault("FLAGS_enable_pir_api", "0")
+    os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
+
+    try:
+        from paddleocr import PaddleOCR  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Для OCR требуется пакет paddleocr. Ошибка: %s", exc)
+        raise
+
+    try:
+        from PIL import Image  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Для OCR требуется пакет Pillow. Ошибка: %s", exc)
+        raise
+
+    try:
+        import numpy as np  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Для OCR требуется пакет numpy. Ошибка: %s", exc)
+        raise
+
+    _OCR_DEPS = (Image, PaddleOCR, np)
+    return _OCR_DEPS
+
+
+def _get_ocr_engine() -> "PaddleOCR":  # type: ignore[name-defined]
+    global _OCR_ENGINE
+    if _OCR_ENGINE is not None:
+        return _OCR_ENGINE
+
+    _, PaddleOCR, _ = _load_ocr_deps()
+    try:
+        _OCR_ENGINE = PaddleOCR(
+            lang=OCR_LANGUAGE,
+            use_textline_orientation=True,
+            device="cpu",
+            enable_mkldnn=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Не удалось инициализировать PaddleOCR: %s", exc)
+        raise
+    return _OCR_ENGINE
+
+
+def _ocr_image(path: Path, lang: str = OCR_LANGUAGE) -> str:
+    Image, _, np = _load_ocr_deps()
+    ocr = _get_ocr_engine()
+
+    try:
+        with Image.open(path) as img:
+            frames = []
+            try:
+                from PIL import ImageSequence  # type: ignore
+
+                frames = list(ImageSequence.Iterator(img))
+            except Exception:
+                frames = [img]
+
+            texts: List[str] = []
+            for frame in frames:
+                frame_rgb = frame.convert("RGB") if frame.mode not in {"RGB", "L"} else frame
+                result = ocr.predict(
+                    np.array(frame_rgb),
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=False,
+                )
+                texts.append(_format_paddle_ocr(result))
+            return "\n".join(t for t in texts if t.strip())
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Ошибка OCR для изображения %s: %s", path, exc)
+        return ""
+
+
+def _pdf_contains_images(path: Path) -> bool:
+    try:
+        import fitz  # PyMuPDF
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Для OCR PDF требуется PyMuPDF. Ошибка: %s", exc)
+        return False
+
+    try:
+        with fitz.open(str(path)) as doc:
+            for page in doc:
+                if page.get_images(full=True):
+                    return True
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Не удалось проверить PDF на наличие изображений %s: %s", path, exc)
+    return False
+
+
+def _ocr_pdf_images(path: Path, lang: str = OCR_LANGUAGE) -> str:
+    try:
+        import fitz  # PyMuPDF
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Для OCR PDF требуется PyMuPDF. Ошибка: %s", exc)
+        return ""
+
+    Image, _, np = _load_ocr_deps()
+    ocr = _get_ocr_engine()
+
+    texts: List[str] = []
+    try:
+        with fitz.open(str(path)) as doc:
+            matrix = fitz.Matrix(OCR_PDF_ZOOM, OCR_PDF_ZOOM)
+            for page_index, page in enumerate(doc, start=1):
+                if not page.get_images(full=True):
+                    continue
+                pix = page.get_pixmap(matrix=matrix, alpha=False)
+                mode = "RGB" if pix.n < 4 else "RGBA"
+                img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                result = ocr.predict(
+                    np.array(img),
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=False,
+                )
+                page_text = _format_paddle_ocr(result)
+                if page_text.strip():
+                    texts.append(f"--- PAGE {page_index} ---\n{page_text}")
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("Ошибка OCR для PDF %s: %s", path, exc)
+        return ""
+
+    return "\n".join(texts)
+
+
+def _format_paddle_ocr(result: List) -> str:
+    if not result:
+        return ""
+
+    lines: List[str] = []
+    for line in result:
+        if isinstance(line, dict) and "rec_texts" in line:
+            texts = line.get("rec_texts") or []
+            scores = line.get("rec_scores") or []
+            for idx, text_item in enumerate(texts):
+                text_val = text_item[0] if isinstance(text_item, (list, tuple)) else text_item
+                score_val = None
+                if idx < len(scores):
+                    try:
+                        score_val = float(scores[idx])
+                    except Exception:
+                        score_val = None
+                if score_val is not None and score_val < OCR_MIN_CONFIDENCE:
+                    continue
+                if text_val:
+                    lines.append(str(text_val))
+            continue
+
+        if not line or len(line) < 2:
+            continue
+        text_data = line[1]
+        if not text_data or len(text_data) < 2:
+            continue
+        text, score = text_data[0], text_data[1]
+        if score is not None and score < OCR_MIN_CONFIDENCE:
+            continue
+        if text:
+            lines.append(str(text))
+    return "\n".join(lines)
+
+
+def _build_ocr_output_path(output_dir: Path, rel_path: Path) -> Path:
+    output_path = output_dir / rel_path
+    return output_path.with_suffix(".ocr.txt")
+
+
 def read_text_from_file(path: Path) -> str:
     """
     Чтение текста из файла в зависимости от расширения.
@@ -496,6 +721,55 @@ def read_text_from_file(path: Path) -> str:
         )
         # #endregion
         return paragraphs_text
+
+    if suffix == ".pdf":
+        # Поддержка текстовых PDF (изображения/сканы не распознаются).
+        # Сначала пробуем PyMuPDF (лучше работает с нестандартными кодировками),
+        # затем fallback на pdfminer.six.
+        try:
+            import fitz  # PyMuPDF
+
+            with fitz.open(str(path)) as doc:
+                pages_text = [page.get_text("text") for page in doc]
+            return "\n".join(pages_text)
+        except Exception as pymupdf_exc:  # noqa: BLE001
+            LOGGER.debug("PyMuPDF не смог извлечь текст из %s: %s", path, pymupdf_exc)
+
+        try:
+            # Используем pdfminer.six (устанавливается как зависимость textract).
+            from pdfminer.high_level import extract_text  # type: ignore
+        except Exception as exc:  # noqa: BLE001
+            # В старых версиях pdfminer.six (20181108) high_level.extract_text отсутствует.
+            try:
+                from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter  # type: ignore
+                from pdfminer.converter import TextConverter  # type: ignore
+                from pdfminer.layout import LAParams  # type: ignore
+                from pdfminer.pdfpage import PDFPage  # type: ignore
+            except Exception as inner_exc:  # noqa: BLE001
+                LOGGER.error(
+                    "Для обработки .pdf требуется pdfminer.six. Ошибка: %s; дополнительная ошибка: %s",
+                    exc,
+                    inner_exc,
+                )
+                raise
+
+            def _extract_text_legacy(pdf_path: Path) -> str:
+                output = StringIO()
+                rsrcmgr = PDFResourceManager()
+                laparams = LAParams()
+                with TextConverter(rsrcmgr, output, laparams=laparams) as device:
+                    interpreter = PDFPageInterpreter(rsrcmgr, device)
+                    with pdf_path.open("rb") as f:
+                        for page in PDFPage.get_pages(f):
+                            interpreter.process_page(page)
+                return output.getvalue()
+
+            return _extract_text_legacy(path) or ""
+
+        return extract_text(str(path)) or ""
+
+    if suffix in IMAGE_EXTENSIONS:
+        return _ocr_image(path, lang=OCR_LANGUAGE)
 
     if suffix == ".doc":
         try:
@@ -542,6 +816,55 @@ def write_text_to_file(path: Path, text: str, original_suffix: str) -> None:
         doc.save(str(path))
         return
 
+    if suffix == ".pdf":
+        # Пишем простой текстовый PDF без сохранения исходной верстки.
+        # Важно: для кириллицы нужен TTF-шрифт с поддержкой Unicode.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        c = canvas.Canvas(str(path), pagesize=A4)
+        width, height = A4
+        margin = 40
+        y = height - margin
+        line_height = 14
+        max_chars = 110
+
+        def _register_cyrillic_font() -> str:
+            candidates = [
+                Path(r"C:\Windows\Fonts\arial.ttf"),
+                Path(r"C:\Windows\Fonts\times.ttf"),
+                Path(r"C:\Windows\Fonts\calibri.ttf"),
+                Path(r"C:\Windows\Fonts\verdana.ttf"),
+                Path(r"C:\Windows\Fonts\tahoma.ttf"),
+                Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+                Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+                Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+            ]
+
+            for font_path in candidates:
+                try:
+                    if font_path.is_file():
+                        font_name = f"ttf_{font_path.stem}"
+                        if font_name not in pdfmetrics.getRegisteredFontNames():
+                            pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
+                        return font_name
+                except Exception:
+                    continue
+            return "Helvetica"
+
+        font_name = _register_cyrillic_font()
+        c.setFont(font_name, 11)
+
+        for raw_line in text.splitlines():
+            wrapped = textwrap.wrap(raw_line, width=max_chars) or [""]
+            for line in wrapped:
+                if y <= margin:
+                    c.showPage()
+                    c.setFont(font_name, 11)
+                    y = height - margin
+                c.drawString(margin, y, line)
+                y -= line_height
+        c.save()
+        return
+
     # На всякий случай, как текст.
     with path.open("w", encoding="utf-8") as f:
         f.write(text)
@@ -582,170 +905,6 @@ class TokenGenerator:
         return token
 
 
-def _looks_like_org_word(word: str) -> bool:
-    if ORG_UPPER_WORD_RE.match(word):
-        return True
-    if ORG_TITLE_WORD_RE.match(word):
-        return True
-    return False
-
-
-def _expand_organization_span(text: str, start: int, end: int) -> Tuple[int, int]:
-    """
-    Expand short organization abbreviations to the right to capture full names.
-    Example: "ФГБОУ ВО "..." "..."".
-    """
-    original = text[start:end].strip()
-    if not ORG_ABBR_RE.match(original):
-        return start, end
-
-    i = end
-    new_end = end
-
-    while i < len(text):
-        # skip whitespace
-        while i < len(text) and text[i].isspace():
-            i += 1
-        if i >= len(text):
-            break
-
-        ch = text[i]
-        if ch in ("\"", "«"):
-            close = "»" if ch == "«" else "\""
-            j = text.find(close, i + 1)
-            if j == -1:
-                break
-            new_end = j + 1
-            i = j + 1
-            continue
-
-        if ch in "([;:,.])" or ch in "–—-":
-            break
-
-        j = i
-        while j < len(text) and (text[j].isalnum() or text[j] in "-/"):
-            j += 1
-        word = text[i:j]
-        if _looks_like_org_word(word):
-            new_end = j
-            i = j
-            continue
-        break
-
-    return start, new_end
-
-
-def _expand_organization_results(
-    text: str, results: List[RecognizerResult]
-) -> List[RecognizerResult]:
-    expanded: List[RecognizerResult] = []
-    for res in results:
-        if res.entity_type.upper() == "ORGANIZATION":
-            new_start, new_end = _expand_organization_span(text, res.start, res.end)
-            if new_start != res.start or new_end != res.end:
-                res = RecognizerResult(
-                    entity_type=res.entity_type,
-                    start=new_start,
-                    end=new_end,
-                    score=res.score,
-                )
-        expanded.append(res)
-    return expanded
-
-
-def _merge_overlapping_organizations(
-    results: List[RecognizerResult],
-) -> List[RecognizerResult]:
-    orgs = [r for r in results if r.entity_type.upper() == "ORGANIZATION"]
-    if not orgs:
-        return results
-
-    orgs_sorted = sorted(
-        orgs, key=lambda r: (r.start, -(r.end - r.start), -r.score)
-    )
-    merged: List[RecognizerResult] = []
-    for res in orgs_sorted:
-        if not merged:
-            merged.append(res)
-            continue
-        last = merged[-1]
-        if res.start < last.end:
-            len_res = res.end - res.start
-            len_last = last.end - last.start
-            if len_res > len_last or (len_res == len_last and res.score > last.score):
-                merged[-1] = res
-            continue
-        merged.append(res)
-
-    others = [r for r in results if r.entity_type.upper() != "ORGANIZATION"]
-    return merged + others
-
-
-def _remove_results_inside_organizations(
-    results: List[RecognizerResult],
-) -> List[RecognizerResult]:
-    org_spans = [(r.start, r.end) for r in results if r.entity_type.upper() == "ORGANIZATION"]
-    if not org_spans:
-        return results
-
-    filtered: List[RecognizerResult] = []
-    for res in results:
-        if res.entity_type.upper() == "ORGANIZATION":
-            filtered.append(res)
-            continue
-        if any(start <= res.start and res.end <= end for start, end in org_spans):
-            continue
-        filtered.append(res)
-    return filtered
-
-
-def _dedupe_results(results: List[RecognizerResult]) -> List[RecognizerResult]:
-    seen = set()
-    deduped: List[RecognizerResult] = []
-    for res in results:
-        key = (res.entity_type, res.start, res.end)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(res)
-    return deduped
-
-
-def _term_to_regex(term: str) -> str:
-    parts = [re.escape(p) for p in re.split(r"\s+", term.strip()) if p]
-    return r"\s+".join(parts)
-
-
-def _find_dictionary_entities(
-    text: str,
-    custom_dictionary: Dict[str, List[str]],
-    enabled_entity_types: List[str],
-) -> List[RecognizerResult]:
-    if not custom_dictionary:
-        return []
-
-    enabled = {e.upper() for e in enabled_entity_types}
-    results: List[RecognizerResult] = []
-    for ent_type, values in custom_dictionary.items():
-        ent_type_u = ent_type.upper()
-        if ent_type_u not in enabled:
-            continue
-        for term in values:
-            pattern = _term_to_regex(term)
-            if not pattern:
-                continue
-            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
-                results.append(
-                    RecognizerResult(
-                        entity_type=ent_type_u,
-                        start=match.start(),
-                        end=match.end(),
-                        score=0.9,
-                    )
-                )
-    return results
-
-
 def mask_text(
     text: str,
     analyzer: AnalyzerEngine,
@@ -784,21 +943,6 @@ def mask_text(
             continue
 
         filtered_results.append(res)
-
-    # Add dictionary-based entities (explicit allow-list).
-    filtered_results.extend(
-        _find_dictionary_entities(
-            text=text,
-            custom_dictionary=config.custom_dictionary,
-            enabled_entity_types=config.entity_types,
-        )
-    )
-
-    # Expand organization abbreviations and clean overlaps.
-    filtered_results = _expand_organization_results(text, filtered_results)
-    filtered_results = _merge_overlapping_organizations(filtered_results)
-    filtered_results = _remove_results_inside_organizations(filtered_results)
-    filtered_results = _dedupe_results(filtered_results)
 
     # Сортируем по убыванию start, чтобы не смещать индексы при подстановке.
     results_sorted = sorted(filtered_results, key=lambda r: r.start, reverse=True)
@@ -916,6 +1060,7 @@ def process_file(
     config: MaskingConfig,
     token_gen: TokenGenerator,
     stats: Dict[str, int],
+    enable_ocr: bool = False,
 ) -> None:
     """
     Обработка одного файла: чтение, маскирование, запись результата.
@@ -941,6 +1086,43 @@ def process_file(
             token_gen=token_gen,
             stats=stats,
         )
+        return
+
+    if suffix in IMAGE_EXTENSIONS:
+        if not enable_ocr:
+            LOGGER.info("Пропуск изображения (OCR выключен): %s", file_path)
+            return
+        try:
+            text = read_text_from_file(file_path)
+        except Exception as e:  # noqa: BLE001
+            LOGGER.error("Ошибка OCR изображения %s: %s", file_path, e)
+            stats["errors"] += 1
+            return
+
+        try:
+            masked_text, results = mask_text(
+                text=text,
+                analyzer=analyzer,
+                config=config,
+                token_gen=token_gen,
+            )
+        except Exception as e:  # noqa: BLE001
+            LOGGER.error("Ошибка анализа OCR текста %s: %s", file_path, e)
+            stats["errors"] += 1
+            return
+
+        for res in results:
+            stats[res.entity_type] += 1
+
+        try:
+            ocr_output_path = _build_ocr_output_path(output_dir, rel_path)
+            LOGGER.debug("Запись OCR результата %s", ocr_output_path)
+            ocr_output_path.parent.mkdir(parents=True, exist_ok=True)
+            ocr_output_path.write_text(masked_text, encoding="utf-8")
+            stats["files_processed"] += 1
+        except Exception as e:  # noqa: BLE001
+            LOGGER.error("Ошибка записи OCR результата %s: %s", file_path, e)
+            stats["errors"] += 1
         return
 
     try:
@@ -974,6 +1156,28 @@ def process_file(
     except Exception as e:  # noqa: BLE001
         LOGGER.error("Ошибка записи файла %s: %s", output_file_path, e)
         stats["errors"] += 1
+        return
+
+    if enable_ocr and suffix == ".pdf":
+        if _pdf_contains_images(file_path):
+            ocr_text = _ocr_pdf_images(file_path, lang=OCR_LANGUAGE)
+            if ocr_text.strip():
+                try:
+                    ocr_masked, ocr_results = mask_text(
+                        text=ocr_text,
+                        analyzer=analyzer,
+                        config=config,
+                        token_gen=token_gen,
+                    )
+                    for res in ocr_results:
+                        stats[res.entity_type] += 1
+                    ocr_output_path = _build_ocr_output_path(output_dir, rel_path)
+                    LOGGER.debug("Запись OCR результата PDF %s", ocr_output_path)
+                    ocr_output_path.parent.mkdir(parents=True, exist_ok=True)
+                    ocr_output_path.write_text(ocr_masked, encoding="utf-8")
+                except Exception as e:  # noqa: BLE001
+                    LOGGER.error("Ошибка OCR/записи PDF %s: %s", file_path, e)
+                    stats["errors"] += 1
 
 
 def setup_logging(log_level: str) -> None:
@@ -990,7 +1194,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         default="./input_texts",
-        help="Путь к входной папке с текстовыми файлами (doc, docx, txt). По умолчанию ./input_texts.",
+        help="Путь к входной папке с текстовыми файлами (doc, docx, txt, pdf) и изображениями. По умолчанию ./input_texts.",
     )
     parser.add_argument(
         "--output",
@@ -1017,6 +1221,11 @@ def parse_args() -> argparse.Namespace:
         "--config",
         default="config.yaml",
         help="Путь к YAML-конфигу с параметрами Presidio и списка сущностей.",
+    )
+    parser.add_argument(
+        "--ocr",
+        action="store_true",
+        help="Включить OCR для изображений и сканированных PDF. По умолчанию OCR выключен.",
     )
     return parser.parse_args()
 
@@ -1068,6 +1277,7 @@ def main() -> None:
                 config=config,
                 token_gen=token_gen,
                 stats=stats,
+                enable_ocr=args.ocr,
             )
         except Exception as e:  # noqa: BLE001
             LOGGER.error("Необработанное исключение при обработке файла %s: %s", file_path, e)
@@ -1092,4 +1302,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
