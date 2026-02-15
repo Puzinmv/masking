@@ -574,7 +574,7 @@ def _ocr_image(path: Path, lang: str = OCR_LANGUAGE) -> str:
 
             texts: List[str] = []
             for frame in frames:
-                frame_rgb = frame.convert("RGB") if frame.mode not in {"RGB", "L"} else frame
+                frame_rgb = frame if frame.mode == "RGB" else frame.convert("RGB")
                 result = ocr.predict(
                     np.array(frame_rgb),
                     use_doc_orientation_classify=False,
@@ -856,7 +856,7 @@ def write_text_to_file(path: Path, text: str, original_suffix: str) -> None:
         for raw_line in text.splitlines():
             wrapped = textwrap.wrap(raw_line, width=max_chars) or [""]
             for line in wrapped:
-                if y <= margin:
+                if y - line_height < margin:
                     c.showPage()
                     c.setFont(font_name, 11)
                     y = height - margin
