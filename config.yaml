@@ -22,9 +22,10 @@ score_threshold: 0.35
 # Optional allow-list of exact phrases to mask.
 # Example:
 # custom_dictionary:
-#   ORGANIZATION:
-#     - 'ФГБОУ ВО "Ромашка" "РМША"'
-custom_dictionary: {}
+#   - 'ФГБОУ ВО "Ромашка" "РМША"'
+custom_dictionary: 
+  - 'ФГБОУ ВО "Ромашка" "РМША"'
+
 
 # Конфигурация логирования по умолчанию (может быть перекрыта --log-level).
 logging:

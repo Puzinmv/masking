@@ -56,8 +56,8 @@ OCR_MIN_CONFIDENCE = 0.3
 _OCR_ENGINE = None
 _OCR_DEPS = None
 
-# Глобальный словарь "стоп-слов" по типам сущностей, загружается из YAML.
-# Ключ: тип сущности (PERSON, ORGANIZATION, ...), значение: набор точных строк и regex-паттернов.
+# Глобальный набор "стоп-слов", загружается из YAML.
+# Применяется ко всем сущностям вне зависимости от их типа.
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,7 @@ class StopwordSet:
     regex: List[re.Pattern]
 
 
-ENTITY_STOPWORDS: Dict[str, StopwordSet] = {}
+ENTITY_STOPWORDS: StopwordSet = StopwordSet(exact=set(), regex=[])
 
 # Кеш лемм и NLP-движок для морфологической фильтрации стоп-слов.
 STOPWORD_LEMMA_CACHE: Dict[str, set[str]] = {}
@@ -79,6 +79,7 @@ class MaskingConfig:
     language: str
     entity_types: List[str]
     score_threshold: float
+    custom_dictionary: List[str]
 
 
 def load_config(path: Optional[Path]) -> MaskingConfig:
@@ -102,6 +103,7 @@ def load_config(path: Optional[Path]) -> MaskingConfig:
             "ORG_OGRN",
         ],
         "score_threshold": 0.35,
+        "custom_dictionary": [],
     }
 
     if path is None or not path.is_file():
@@ -111,24 +113,111 @@ def load_config(path: Optional[Path]) -> MaskingConfig:
             file_cfg = yaml.safe_load(f) or {}
         cfg = {**default, **file_cfg}
 
+    raw_custom_dictionary = cfg.get("custom_dictionary") or []
+    custom_dictionary: List[str] = []
+    if isinstance(raw_custom_dictionary, list):
+        custom_dictionary = [str(v).strip() for v in raw_custom_dictionary if str(v).strip()]
+    elif isinstance(raw_custom_dictionary, dict):
+        # Backward compatibility: flatten values from old format with entity keys.
+        flattened: List[str] = []
+        for values in raw_custom_dictionary.values():
+            if isinstance(values, list):
+                flattened.extend(str(v).strip() for v in values if str(v).strip())
+        custom_dictionary = flattened
+        LOGGER.warning(
+            "Обнаружен legacy-формат custom_dictionary (по типам сущностей). "
+            "Рекомендуется перейти на единый список фраз."
+        )
+
+    # Keep order, remove duplicates.
+    custom_dictionary = list(dict.fromkeys(custom_dictionary))
+
     return MaskingConfig(
         language=cfg["language"],
         entity_types=list(cfg["entity_types"]),
         score_threshold=float(cfg["score_threshold"]),
+        custom_dictionary=custom_dictionary,
     )
 
 
-def load_stopwords(path: Optional[Path]) -> Dict[str, StopwordSet]:
+def _build_phrase_pattern_regex(phrase: str) -> str:
+    """
+    Создает regex для точной фразы с учетом любых пробельных символов между словами.
+    """
+    parts = phrase.split()
+    if not parts:
+        return ""
+    # Границы слова + гибкие пробелы между токенами.
+    body = r"\s+".join(re.escape(part) for part in parts)
+    return rf"(?<!\w){body}(?!\w)"
+
+
+def add_custom_dictionary_recognizers(
+    registry: RecognizerRegistry,
+    config: MaskingConfig,
+) -> None:
+    """
+    Регистрирует recognizers для exact-фраз из custom_dictionary.
+    Формат custom_dictionary:
+      - "Компания Ромашка"
+      - "НИНХ"
+
+    Один и тот же словарь применяется ко всем типам сущностей из entity_types.
+    """
+    if not config.custom_dictionary:
+        return
+
+    normalized_phrases = list(dict.fromkeys(p.strip() for p in config.custom_dictionary if p.strip()))
+    if not normalized_phrases:
+        return
+
+    for entity_type in config.entity_types:
+        patterns: List[Pattern] = []
+        for i, phrase in enumerate(normalized_phrases, start=1):
+            regex = _build_phrase_pattern_regex(phrase)
+            if not regex:
+                continue
+            patterns.append(
+                Pattern(
+                    name=f"custom_{entity_type.lower()}_{i}",
+                    regex=regex,
+                    score=1.0,
+                )
+            )
+
+        if not patterns:
+            continue
+
+        # Используем deny_list как основной механизм "словаря фраз",
+        # regex оставляем как fallback для нестандартных пробелов/разрывов.
+        try:
+            recognizer = PatternRecognizer(
+                supported_entity=entity_type,
+                patterns=patterns,
+                deny_list=normalized_phrases,
+                deny_list_score=1.0,
+                supported_language=config.language,
+            )
+        except TypeError:
+            recognizer = PatternRecognizer(
+                supported_entity=entity_type,
+                patterns=patterns,
+                supported_language=config.language,
+            )
+        registry.add_recognizer(recognizer)
+
+
+def load_stopwords(path: Optional[Path]) -> StopwordSet:
     """
     Загрузка стоп-слов из YAML-файла.
-    Формат:
-      ORGANIZATION:
-        - "СОГЛАСОВАНО"
-        - "УТВЕРЖДАЮ"
-      PERSON:
-        - "КАТЕГОРИЯ"
-        - "КАТЕГОРИЯ III"
-    Все ключи и значения приводятся к верхнему регистру.
+    Основной формат:
+      - "СОГЛАСОВАНО"
+      - "re:^([А-ЯЁ]{2})\\.\\d+$"
+      - "КАТЕГОРИЯ"
+
+    Поддерживается также legacy-формат с ключами типов сущностей
+    (ORGANIZATION/PERSON и т.п.) для обратной совместимости.
+    Все текстовые значения приводятся к верхнему регистру.
     """
     if path is None:
         # По умолчанию пробуем файл stopwords.yaml в рабочей директории.
@@ -136,44 +225,56 @@ def load_stopwords(path: Optional[Path]) -> Dict[str, StopwordSet]:
 
     if not path.is_file():
         LOGGER.info("Файл стоп-слов не найден: %s (будет использован пустой список)", path)
-        return {}
+        return StopwordSet(exact=set(), regex=[])
 
     try:
         with path.open("r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
     except Exception as exc:  # noqa: BLE001
         LOGGER.error("Ошибка чтения файла стоп-слов %s: %s", path, exc)
-        return {}
+        return StopwordSet(exact=set(), regex=[])
 
-    if not isinstance(raw, dict):
-        LOGGER.error("Некорректный формат stopwords YAML (ожидается mapping): %s", path)
-        return {}
+    values: List[object] = []
+    if isinstance(raw, list):
+        values = raw
+    elif isinstance(raw, dict):
+        # Legacy: объединяем списки из всех ключей сущностей в один общий набор.
+        LOGGER.warning(
+            "Обнаружен legacy-формат stopwords (по типам сущностей): %s. "
+            "Рекомендуется перейти на единый список.",
+            path,
+        )
+        for v in raw.values():
+            if isinstance(v, list):
+                values.extend(v)
+    else:
+        LOGGER.error("Некорректный формат stopwords YAML (ожидается list): %s", path)
+        return StopwordSet(exact=set(), regex=[])
 
-    result: Dict[str, StopwordSet] = {}
-    for ent_type, values in raw.items():
-        if not isinstance(values, list):
+    exact: set[str] = set()
+    regex: List[re.Pattern] = []
+    for v in values:
+        s = str(v).strip()
+        if not s:
             continue
-        et = str(ent_type).upper()
-        exact: set[str] = set()
-        regex: List[re.Pattern] = []
-        for v in values:
-            s = str(v).strip()
-            if not s:
+        if s.lower().startswith("re:"):
+            pattern = s[3:].strip()
+            if not pattern:
                 continue
-            if s.lower().startswith("re:"):
-                pattern = s[3:].strip()
-                if not pattern:
-                    continue
-                try:
-                    regex.append(re.compile(pattern, flags=re.IGNORECASE))
-                except re.error as exc:
-                    LOGGER.warning("Некорректный regex в stopwords (%s): %s", et, exc)
-                continue
-            exact.add(s.upper())
-        if exact or regex:
-            result[et] = StopwordSet(exact=exact, regex=regex)
+            try:
+                regex.append(re.compile(pattern, flags=re.IGNORECASE))
+            except re.error as exc:
+                LOGGER.warning("Некорректный regex в stopwords: %s", exc)
+            continue
+        exact.add(s.upper())
 
-    LOGGER.info("Загружено стоп-слов: %d типов из %s", len(result), path)
+    result = StopwordSet(exact=exact, regex=regex)
+    LOGGER.info(
+        "Загружено стоп-слов: %d точных + %d regex из %s",
+        len(result.exact),
+        len(result.regex),
+        path,
+    )
     return result
 
 
@@ -224,7 +325,14 @@ def _get_lemmas_for_text(text: str) -> set[str]:
     return lemmas
 
 
-def _is_in_stopwords(ent_type: str, original_value: str) -> bool:
+def _word_tokens(text: str) -> List[str]:
+    """
+    Выделяет "словесные" токены для грубой проверки однословности.
+    """
+    return re.findall(r"[0-9A-Za-zА-Яа-яЁё-]+", text, flags=re.UNICODE)
+
+
+def _is_in_stopwords(original_value: str) -> bool:
     """
     Проверяет, является ли распознанная сущность стоп-словом.
 
@@ -233,9 +341,7 @@ def _is_in_stopwords(ent_type: str, original_value: str) -> bool:
     2) затем сравнение по леммам, чтобы одно слово в стоп-списке
        отбрасывало все его формы.
     """
-    ent_type_u = ent_type.upper()
-    stopwords = ENTITY_STOPWORDS.get(ent_type_u)
-    if not stopwords:
+    if not ENTITY_STOPWORDS.exact and not ENTITY_STOPWORDS.regex:
         return False
 
     value_u = original_value.upper().strip()
@@ -243,20 +349,29 @@ def _is_in_stopwords(ent_type: str, original_value: str) -> bool:
         return False
 
     # Точное совпадение по строке.
-    if value_u in stopwords.exact:
+    if value_u in ENTITY_STOPWORDS.exact:
         return True
 
     # Совпадение по regex.
-    for rx in stopwords.regex:
+    for rx in ENTITY_STOPWORDS.regex:
         if rx.search(original_value):
             return True
 
-    # Сравнение по леммам.
+    # Сравнение по леммам:
+    # применяем только для однословных сущностей и однословных стоп-слов.
+    # Это защищает от ложных срабатываний на длинные фразы по пересечению
+    # одной общей леммы (например "УПРАВЛЕНИЕ").
+    value_tokens = _word_tokens(original_value)
+    if len(value_tokens) != 1:
+        return False
+
     value_lemmas = _get_lemmas_for_text(original_value)
     if not value_lemmas:
         return False
 
-    for sw in stopwords.exact:
+    for sw in ENTITY_STOPWORDS.exact:
+        if len(_word_tokens(sw)) != 1:
+            continue
         sw_lemmas = _get_lemmas_for_text(sw)
         if value_lemmas & sw_lemmas:
             return True
@@ -273,7 +388,7 @@ def build_nlp_engine(language: str) -> NlpEngine:
     nlp_configuration = {
         "nlp_engine_name": "spacy",
         "models": [
-            {"lang_code": language, "model_name": f"{language}_core_news_md"},
+            {"lang_code": language, "model_name": f"{language}_core_news_lg"},
         ],
     }
     provider = NlpEngineProvider(nlp_configuration=nlp_configuration)
@@ -305,6 +420,7 @@ def build_analyzer(config: MaskingConfig) -> AnalyzerEngine:
     _debug_log("after RecognizerRegistry()", {"registry_supported_languages": getattr(registry, "supported_languages", "N/A"), "hypothesisId": "A"})
     # #endregion
     registry.load_predefined_recognizers()
+    add_custom_dictionary_recognizers(registry, config)
     # #region agent log
     _debug_log("before AnalyzerEngine", {"registry_supported_languages": getattr(registry, "supported_languages", "N/A"), "analyzer_langs": [config.language], "hypothesisId": "B"})
     # #endregion
@@ -939,7 +1055,7 @@ def mask_text(
 
         # Пропускаем заведомо неверные сущности по словарю стоп-слов,
         # в том числе с учётом всех их склонений (через лемматизацию).
-        if _is_in_stopwords(res.entity_type, original_value):
+        if _is_in_stopwords(original_value):
             continue
 
         filtered_results.append(res)

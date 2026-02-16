@@ -1,0 +1,44 @@
+﻿# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Tool caches and test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# IDE/editor settings
+.vscode/
+.idea/
+.cursor/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keep text folders, ignore their contents
+input_texts/*
+!input_texts/.gitkeep
+masked_texts/*
+!masked_texts/.gitkeep

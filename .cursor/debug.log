@@ -93,3 +93,77 @@
 {"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1770808993950, "runId": "post-fix"}
 {"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 17575, "tables_text_len_after": 796, "entities_found": 87, "hypothesisId": "H4"}, "timestamp": 1770809002265, "runId": "post-fix"}
 {"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1770815623599, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1770817219437, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1770817219534, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1770817219918, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 17374, "tables_text_len_after": 762, "entities_found": 79, "hypothesisId": "H4"}, "timestamp": 1770817226051, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771235423695, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771235430271, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771235430376, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771235430642, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 17575, "tables_text_len_after": 796, "entities_found": 87, "hypothesisId": "H4"}, "timestamp": 1771235437904, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771235623779, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771235639864, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771235639944, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771235640193, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 17604, "tables_text_len_after": 762, "entities_found": 84, "hypothesisId": "H4"}, "timestamp": 1771235648605, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771236379655, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771236399351, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771236399440, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771236399730, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16857, "tables_text_len_after": 762, "entities_found": 4, "hypothesisId": "H4"}, "timestamp": 1771236407330, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771236560393, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771236566205, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771236566331, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771236566458, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16867, "tables_text_len_after": 762, "entities_found": 2, "hypothesisId": "H4"}, "timestamp": 1771236573965, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771236619865, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771236628672, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771236628769, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771236629157, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16867, "tables_text_len_after": 762, "entities_found": 2, "hypothesisId": "H4"}, "timestamp": 1771236636591, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771236718916, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771236723358, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771236723416, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771236723626, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16867, "tables_text_len_after": 762, "entities_found": 2, "hypothesisId": "H4"}, "timestamp": 1771236730700, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771236802407, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771236807116, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771236807249, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771236807565, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16867, "tables_text_len_after": 762, "entities_found": 2, "hypothesisId": "H4"}, "timestamp": 1771236816400, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771237175281, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771237188621, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771237188700, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771237188923, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16897, "tables_text_len_after": 762, "entities_found": 4, "hypothesisId": "H4"}, "timestamp": 1771237196317, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771240278562, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771240295640, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771240295756, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771240296000, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16897, "tables_text_len_after": 762, "entities_found": 4, "hypothesisId": "H4"}, "timestamp": 1771240303494, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771240527319, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771240540630, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771240540712, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771240540938, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16897, "tables_text_len_after": 762, "entities_found": 4, "hypothesisId": "H4"}, "timestamp": 1771240548383, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771240602279, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771240607292, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771240607352, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771240607455, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16897, "tables_text_len_after": 762, "entities_found": 4, "hypothesisId": "H4"}, "timestamp": 1771240615319, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771241567603, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771241581436, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771241581511, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771241581718, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16725, "tables_text_len_after": 762, "entities_found": 8, "hypothesisId": "H4"}, "timestamp": 1771241588955, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771241893588, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771241907389, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771241907478, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771241907682, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16755, "tables_text_len_after": 762, "entities_found": 4, "hypothesisId": "H4"}, "timestamp": 1771241914981, "runId": "post-fix"}
+{"message": "build_analyzer entry", "data": {"config_language": "ru", "hypothesisId": "C"}, "timestamp": 1771242647317, "runId": "post-fix"}
+{"message": "after RecognizerRegistry()", "data": {"registry_supported_languages": ["ru"], "hypothesisId": "A"}, "timestamp": 1771242659947, "runId": "post-fix"}
+{"message": "before AnalyzerEngine", "data": {"registry_supported_languages": ["ru"], "analyzer_langs": ["ru"], "hypothesisId": "B"}, "timestamp": 1771242660051, "runId": "post-fix"}
+{"message": "docx process before", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs": 233, "table_paragraphs": 27, "paragraphs_text_len": 16839, "tables_text_len": 762, "hypothesisId": "H3"}, "timestamp": 1771242660222, "runId": "post-fix"}
+{"message": "docx process after", "data": {"file_name": "ТЗ_НГУЭУ_Общее.docx", "paragraphs_text_len_after": 16755, "tables_text_len_after": 762, "entities_found": 4, "hypothesisId": "H4"}, "timestamp": 1771242665084, "runId": "post-fix"}
